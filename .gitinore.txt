@@ -1,1 +1,1 @@
-Forest Fire Detection Using Satellite Imagery
+dataset/
