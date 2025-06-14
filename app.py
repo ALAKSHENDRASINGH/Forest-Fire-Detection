@@ -1,53 +1,87 @@
 import streamlit as st
+from PIL import Image
 import numpy as np
 from tensorflow.keras.models import load_model
-from PIL import Image, ImageOps
+import os
 
-# Set up app config
-st.set_page_config(page_title="Fire Detection from Satellite", layout="centered")
+# Set page config
+st.set_page_config(
+    page_title="Forest Fire Detection",
+    page_icon="🌲",
+    layout="centered",
+    initial_sidebar_state="auto"
+)
 
-st.title("Fire Detection from Satellite Images")
-st.write("Upload a satellite image to detect presence of Fire or Not Fire")
-
-# Load model (cache it)
+# Load model
 @st.cache_resource
 def load_fire_model():
-    model = load_model("ffd_model.h5")
-    return model
+    current_dir = os.path.dirname(__file__)
+    model_path = os.path.join(current_dir, 'Forest_fire_detection_model.h5')
+    return load_model(model_path)
 
 model = load_fire_model()
 
-# Class labels (you can update this to match your training config)
-class_names = ["No Fire", "Fire 🔥"]
+# Custom CSS for better UI
+st.markdown("""
+    <style>
+        .main {
+            background-color: #f0f2f6;
+        }
+        .stButton>button {
+            background-color: #ff7043;
+            color: white;
+            font-weight: bold;
+            border-radius: 8px;
+            padding: 0.5em 2em;
+        }
+        .stFileUploader {
+            border-radius: 8px;
+        }
+    </style>
+""", unsafe_allow_html=True)
 
-# Upload image section
-uploaded_file = st.file_uploader("📷 Upload Satellite Image", type=["jpg", "png", "jpeg"])
+# App title and description
+st.title("🌲 Forest Fire Detection")
+st.markdown(
+    """
+    <div style='font-size:18px; color:#333;'>
+        Upload a forest image to detect the presence of wildfire using a deep learning model.<br>
+        <b>Supported formats:</b> JPG, JPEG, PNG
+    </div>
+    """, unsafe_allow_html=True
+)
+
+# File uploader
+uploaded_file = st.file_uploader(
+    "Choose an image...",
+    type=["jpg", "jpeg", "png"],
+    help="Upload a clear image of a forest area."
+)
 
 if uploaded_file is not None:
     image = Image.open(uploaded_file).convert("RGB")
     st.image(image, caption="Uploaded Image", use_column_width=True)
+    st.markdown("---")
 
-    # Preprocessing (based on how your model was trained!)
-    # Replace input shape according to your model
-    input_shape = (64, 64)  # Change if your model expects something else
+    with st.spinner("Analyzing image..."):
+        # Preprocess image
+        img_for_model = image.resize((64, 64))
+        img_array = np.array(img_for_model) / 255.0
+        img_array = np.expand_dims(img_array, axis=0)
 
-    # Preprocess image
-    image_resized = image.resize(input_shape)
-    img_array = np.array(image_resized) / 255.0
-    img_array = img_array.reshape(1, *input_shape, 3)  # Add batch dimension
+        # Predict
+        prediction = model.predict(img_array)[0][0]
+        prob = float(prediction)
+        if prob > 0.5:
+            st.error("🔥 **Wildfire Detected!**")
+            st.progress(int(prob * 100))
+        else:
+            st.success("✅ **No Wildfire Detected.**")
+            st.progress(int((1 - prob) * 100))
 
-    if st.button("🧠 Detect Fire"):
-        with st.spinner("Analyzing image..."):
-            prediction = model.predict(img_array)
-            predicted_class = np.argmax(prediction)
-            confidence = float(prediction * 100) if predicted_class == 1 else float(1 - prediction) * 100
-            if confidence < 0.01:
-                confidence_display = "< 0.01%"
-            else:
-                confidence_display = f"{confidence:.2f}%"
-                st.info(f"Confidence: *{confidence_display}*")
-
-
-            st.subheader("Result:")
-            st.success(f"Prediction: *{class_names[predicted_class]}*")
-            st.info(f"Confidence: *{confidence}%*")
+        st.markdown(
+            f"<div style='font-size:16px;'>Detection Confidence: <b>{prob*100:.2f}%</b></div>",
+            unsafe_allow_html=True
+        )
+else:
+    st.info("Please upload a forest image to start detection.")
